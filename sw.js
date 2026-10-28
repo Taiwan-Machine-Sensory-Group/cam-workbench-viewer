@@ -5,8 +5,9 @@ const base=new URL('./',self.location.href),encoder=new TextEncoder();
 const deny=()=>new Response('CAM Workbench: a complete private link is required.',{status:403,headers:{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const decode=s=>Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-s.length%4)%4)),c=>c.charCodeAt(0));
 async function decrypt(url,key,aad){
-  const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error('Missing encrypted file');
-  const bytes=new Uint8Array(await r.arrayBuffer());
+  let r;try{r=await fetch(url,{cache:'no-store'});}catch{throw new Error('connection');}
+  if(!r.ok)throw new Error('connection');
+  let bytes;try{bytes=new Uint8Array(await r.arrayBuffer());}catch{throw new Error('connection');}
   if(bytes.length<29)throw new Error('Truncated encrypted file');
   return crypto.subtle.decrypt({name:'AES-GCM',iv:bytes.slice(0,12),additionalData:encoder.encode(aad)},key,bytes.slice(12));
 }
@@ -24,7 +25,7 @@ self.addEventListener('message',e=>{
       if(manifest.schema!==1||!manifest.files)throw new Error('Invalid manifest');
       sessions.set(e.data.session,{key,manifest,owner:e.source.id});clientSessions.set(e.source.id,e.data.session);
       e.ports[0].postMessage({ok:true});
-    }catch{e.ports[0].postMessage({ok:false});}
+    }catch(error){e.ports[0].postMessage({ok:false,reason:error.message==='connection'?'connection':'key'});}
   })());
 });
 async function recover(clientId,session){
